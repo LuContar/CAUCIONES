@@ -3,7 +3,6 @@ import os
 import pytz
 import threading
 import requests
-from bs4 import BeautifulSoup
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -24,24 +23,18 @@ def start_health_check():
     server = HTTPServer(("0.0.0.0", port), HealthCheck)
     server.serve_forever()
 
-# Obtener TNA pública de cauciones (ejemplo con Rava)
+# Obtener TNA pública de cauciones a 1 día en ARS vía API JSON
 def obtener_tasa_publica():
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
-        url = "https://www.rava.com/cotizaciones/cauciones"
+        url = "https://criptoya.com/api/cauciones"
         response = requests.get(url, headers=headers, timeout=5)
         
         if response.status_code == 200:
-            soup = BeautifulSoup(response.text, 'html.parser')
-            # Busca en la tabla el valor a 1 día (PESOS)
-            # Nota: Si el selector cambia en Rava, se ajusta el parseo
-            tasa_elem = soup.find('td', string=lambda text: text and '1' in text) 
-            if tasa_elem:
-                fila = tasa_elem.parent
-                celdas = fila.find_all('td')
-                if len(celdas) >= 3:
-                    tna = celdas[2].text.strip()
-                    return f"{tna}% TNA"
+            data = response.json()
+            tna = data.get('ars', {}).get('1', {}).get('tna')
+            if tna:
+                return f"{round(tna, 2)}% TNA"
         return None
     except Exception as e:
         print(f"Error al obtener tasa pública: {e}")
