@@ -2,6 +2,7 @@ import datetime
 import os
 import pytz
 import threading
+import time
 import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -106,6 +107,10 @@ async def responder_boton(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     threading.Thread(target=start_health_check, daemon=True).start()
+
+    # Damos 8 segundos para que Render apague por completo el contenedor viejo
+    print("Esperando liberación de sesión anterior...")
+    time.sleep(8)
 
     app = Application.builder().token(TOKEN).build()
 
