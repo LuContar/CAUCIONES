@@ -2,6 +2,8 @@ import datetime
 import os
 import pytz
 import threading
+import requests
+from bs4 import BeautifulSoup
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -10,7 +12,7 @@ TOKEN = "8928763343:AAG744-qe2fMhDqVw4wXEUEHf9QBgE5dIQo"
 CHAT_ID = 1239937569
 ZONA_HORARIA = pytz.timezone('America/Argentina/Buenos_Aires')
 
-# Servidor web falso para el plan Free de Render
+# Servidor web para mantener vivo el servicio en Render Free
 class HealthCheck(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -22,15 +24,41 @@ def start_health_check():
     server = HTTPServer(("0.0.0.0", port), HealthCheck)
     server.serve_forever()
 
+# Obtener TNA pública de cauciones (ejemplo con Rava)
+def obtener_tasa_publica():
+    try:
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        url = "https://www.rava.com/cotizaciones/cauciones"
+        response = requests.get(url, headers=headers, timeout=5)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            # Busca en la tabla el valor a 1 día (PESOS)
+            # Nota: Si el selector cambia en Rava, se ajusta el parseo
+            tasa_elem = soup.find('td', string=lambda text: text and '1' in text) 
+            if tasa_elem:
+                fila = tasa_elem.parent
+                celdas = fila.find_all('td')
+                if len(celdas) >= 3:
+                    tna = celdas[2].text.strip()
+                    return f"{tna}% TNA"
+        return None
+    except Exception as e:
+        print(f"Error al obtener tasa pública: {e}")
+        return None
+
 async def enviar_alerta_13(context: ContextTypes.DEFAULT_TYPE):
     context.bot_data['caucionado_hoy'] = False
+
+    tasa_str = obtener_tasa_publica()
+    info_tasa = f"\n📈 **Tasa de mercado (1D):** `{tasa_str}`" if tasa_str else ""
 
     keyboard = [[
         InlineKeyboardButton("Sí, ya hice 👍", callback_data='si'),
         InlineKeyboardButton("No todavía ❌", callback_data='no')
     ]]
     
-    mensaje = "🚨 **Recordatorio de Cauciones (13:00 hs)**\n¿Vas a caucionar hoy?"
+    mensaje = f"🚨 **Recordatorio de Cauciones (13:00 hs)**{info_tasa}\n\n¿Vas a caucionar hoy?"
     await context.bot.send_message(
         chat_id=CHAT_ID, 
         text=mensaje, 
@@ -42,12 +70,15 @@ async def enviar_alerta_16(context: ContextTypes.DEFAULT_TYPE):
     if context.bot_data.get('caucionado_hoy', False):
         return
 
+    tasa_str = obtener_tasa_publica()
+    info_tasa = f"\n📈 **Tasa de mercado (1D):** `{tasa_str}`" if tasa_str else ""
+
     keyboard = [[
         InlineKeyboardButton("Sí, ya hice 👍", callback_data='si'),
         InlineKeyboardButton("No ❌", callback_data='no')
     ]]
     
-    mensaje = "🔔 **Segundo aviso de Cauciones (16:00 hs)**\nQueda poco para el cierre de mercado. ¿Hiciste la caución?"
+    mensaje = f"🔔 **Segundo aviso de Cauciones (16:00 hs)**{info_tasa}\n\nQueda poco para el cierre de mercado. ¿Hiciste la caución?"
     await context.bot.send_message(
         chat_id=CHAT_ID, 
         text=mensaje, 
@@ -56,11 +87,14 @@ async def enviar_alerta_16(context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def probar_comando(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    tasa_str = obtener_tasa_publica()
+    info_tasa = f"\n📈 **Tasa de mercado (1D):** `{tasa_str}`" if tasa_str else "\n⚠️ *(No se pudo obtener la tasa pública)*"
+
     keyboard = [[
         InlineKeyboardButton("Sí, ya hice 👍", callback_data='si'),
         InlineKeyboardButton("No todavía ❌", callback_data='no')
     ]]
-    mensaje = "🧪 **Prueba de alerta de Cauciones**\n¿Vas a caucionar hoy?"
+    mensaje = f"🧪 **Prueba de alerta de Cauciones**{info_tasa}\n\n¿Vas a caucionar hoy?"
     await update.message.reply_text(
         text=mensaje, 
         reply_markup=InlineKeyboardMarkup(keyboard), 
@@ -78,12 +112,10 @@ async def responder_boton(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⏳ **Anotado.** Te vuelvo a avisar a las 16:00 hs antes del cierre.")
 
 def main():
-    # Iniciar servidor web en segundo plano
     threading.Thread(target=start_health_check, daemon=True).start()
 
     app = Application.builder().token(TOKEN).build()
 
-    # 0 = Lunes, 4 = Viernes
     dias_semana = (0, 1, 2, 3, 4)
 
     app.job_queue.run_daily(
