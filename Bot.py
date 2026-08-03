@@ -24,18 +24,26 @@ def start_health_check():
     server = HTTPServer(("0.0.0.0", port), HealthCheck)
     server.serve_forever()
 
-# Obtener TNA pública de cauciones a 1 día en ARS vía API JSON
+# Obtener TNA pública de cauciones vía API de ArgentinaDatos
 def obtener_tasa_publica():
     try:
         headers = {'User-Agent': 'Mozilla/5.0'}
-        url = "https://criptoya.com/api/cauciones"
+        url = "https://api.argentinadatos.com/v1/finanzas/tasas/cauciones"
         response = requests.get(url, headers=headers, timeout=5)
         
         if response.status_code == 200:
             data = response.json()
-            tna = data.get('ars', {}).get('1', {}).get('tna')
-            if tna:
-                return f"{round(tna, 2)}% TNA"
+            if isinstance(data, list) and len(data) > 0:
+                # Buscamos la tasa a 1 día
+                for item in data:
+                    if str(item.get('plazo')) == '1':
+                        tna = item.get('tna') or item.get('tasa')
+                        if tna:
+                            return f"{round(float(tna), 2)}% TNA"
+                # Si no encuentra el plazo 1 exacto, toma el último disponible
+                tna = data[-1].get('tna') or data[-1].get('tasa')
+                if tna:
+                    return f"{round(float(tna), 2)}% TNA"
         return None
     except Exception as e:
         print(f"Error al obtener tasa pública: {e}")
@@ -108,7 +116,6 @@ async def responder_boton(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     threading.Thread(target=start_health_check, daemon=True).start()
 
-    # Damos 8 segundos para que Render apague por completo el contenedor viejo
     print("Esperando liberación de sesión anterior...")
     time.sleep(8)
 
