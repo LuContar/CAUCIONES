@@ -3,7 +3,6 @@ import os
 import pytz
 import threading
 import time
-import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -12,7 +11,6 @@ TOKEN = "8928763343:AAG744-qe2fMhDqVw4wXEUEHf9QBgE5dIQo"
 CHAT_ID = 1239937569
 ZONA_HORARIA = pytz.timezone('America/Argentina/Buenos_Aires')
 
-# Servidor web para mantener vivo el servicio en Render Free
 class HealthCheck(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -24,43 +22,15 @@ def start_health_check():
     server = HTTPServer(("0.0.0.0", port), HealthCheck)
     server.serve_forever()
 
-# Obtener TNA pública de cauciones vía API de ArgentinaDatos
-def obtener_tasa_publica():
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0'}
-        url = "https://api.argentinadatos.com/v1/finanzas/tasas/cauciones"
-        response = requests.get(url, headers=headers, timeout=5)
-        
-        if response.status_code == 200:
-            data = response.json()
-            if isinstance(data, list) and len(data) > 0:
-                # Buscamos la tasa a 1 día
-                for item in data:
-                    if str(item.get('plazo')) == '1':
-                        tna = item.get('tna') or item.get('tasa')
-                        if tna:
-                            return f"{round(float(tna), 2)}% TNA"
-                # Si no encuentra el plazo 1 exacto, toma el último disponible
-                tna = data[-1].get('tna') or data[-1].get('tasa')
-                if tna:
-                    return f"{round(float(tna), 2)}% TNA"
-        return None
-    except Exception as e:
-        print(f"Error al obtener tasa pública: {e}")
-        return None
-
 async def enviar_alerta_13(context: ContextTypes.DEFAULT_TYPE):
     context.bot_data['caucionado_hoy'] = False
-
-    tasa_str = obtener_tasa_publica()
-    info_tasa = f"\n📈 **Tasa de mercado (1D):** `{tasa_str}`" if tasa_str else ""
 
     keyboard = [[
         InlineKeyboardButton("Sí, ya hice 👍", callback_data='si'),
         InlineKeyboardButton("No todavía ❌", callback_data='no')
     ]]
     
-    mensaje = f"🚨 **Recordatorio de Cauciones (13:00 hs)**{info_tasa}\n\n¿Vas a caucionar hoy?"
+    mensaje = "🚨 **Recordatorio de Cauciones (13:00 hs)**\n\n¿Vas a caucionar hoy?"
     await context.bot.send_message(
         chat_id=CHAT_ID, 
         text=mensaje, 
@@ -72,15 +42,12 @@ async def enviar_alerta_16(context: ContextTypes.DEFAULT_TYPE):
     if context.bot_data.get('caucionado_hoy', False):
         return
 
-    tasa_str = obtener_tasa_publica()
-    info_tasa = f"\n📈 **Tasa de mercado (1D):** `{tasa_str}`" if tasa_str else ""
-
     keyboard = [[
         InlineKeyboardButton("Sí, ya hice 👍", callback_data='si'),
         InlineKeyboardButton("No ❌", callback_data='no')
     ]]
     
-    mensaje = f"🔔 **Segundo aviso de Cauciones (16:00 hs)**{info_tasa}\n\nQueda poco para el cierre de mercado. ¿Hiciste la caución?"
+    mensaje = "🔔 **Segundo aviso de Cauciones (16:00 hs)**\n\nQueda poco para el cierre de mercado. ¿Hiciste la caución?"
     await context.bot.send_message(
         chat_id=CHAT_ID, 
         text=mensaje, 
@@ -89,14 +56,11 @@ async def enviar_alerta_16(context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def probar_comando(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    tasa_str = obtener_tasa_publica()
-    info_tasa = f"\n📈 **Tasa de mercado (1D):** `{tasa_str}`" if tasa_str else "\n⚠️ *(No se pudo obtener la tasa pública)*"
-
     keyboard = [[
         InlineKeyboardButton("Sí, ya hice 👍", callback_data='si'),
         InlineKeyboardButton("No todavía ❌", callback_data='no')
     ]]
-    mensaje = f"🧪 **Prueba de alerta de Cauciones**{info_tasa}\n\n¿Vas a caucionar hoy?"
+    mensaje = "🧪 **Prueba de alerta de Cauciones**\n\n¿Vas a caucionar hoy?"
     await update.message.reply_text(
         text=mensaje, 
         reply_markup=InlineKeyboardMarkup(keyboard), 
@@ -116,7 +80,6 @@ async def responder_boton(update: Update, context: ContextTypes.DEFAULT_TYPE):
 def main():
     threading.Thread(target=start_health_check, daemon=True).start()
 
-    print("Esperando liberación de sesión anterior...")
     time.sleep(8)
 
     app = Application.builder().token(TOKEN).build()
