@@ -1,6 +1,6 @@
 import datetime
 import os
-import pytz
+from zoneinfo import ZoneInfo
 import threading
 import time
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -9,7 +9,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 TOKEN = "8928763343:AAG744-qe2fMhDqVw4wXEUEHf9QBgE5dIQo"
 CHAT_ID = 1239937569
-ZONA_HORARIA = pytz.timezone('America/Argentina/Buenos_Aires')
+ZONA_HORARIA = ZoneInfo('America/Argentina/Buenos_Aires')
 
 class HealthCheck(BaseHTTPRequestHandler):
     def do_GET(self):
