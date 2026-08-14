@@ -26,9 +26,15 @@ def start_health_check():
     server = HTTPServer(("0.0.0.0", port), HealthCheck)
     server.serve_forever()
 
-async def enviar_alerta_13(context: ContextTypes.DEFAULT_TYPE):
-    context.bot_data['caucionado_hoy'] = False
+# Función auxiliar para comprobar si es día hábil
+def es_dia_habil():
+    return datetime.datetime.now(ZONA_HORARIA).weekday() < 5 # 0 es lunes, 4 es viernes
 
+async def enviar_alerta_13(context: ContextTypes.DEFAULT_TYPE):
+    if not es_dia_habil():
+        return
+    
+    context.bot_data['caucionado_hoy'] = False
     keyboard = [[
         InlineKeyboardButton("Sí, ya hice 👍", callback_data='si'),
         InlineKeyboardButton("No todavía ❌", callback_data='no')
@@ -43,7 +49,7 @@ async def enviar_alerta_13(context: ContextTypes.DEFAULT_TYPE):
     )
 
 async def enviar_alerta_16(context: ContextTypes.DEFAULT_TYPE):
-    if context.bot_data.get('caucionado_hoy', False):
+    if not es_dia_habil() or context.bot_data.get('caucionado_hoy', False):
         return
 
     keyboard = [[
@@ -74,7 +80,6 @@ async def probar_comando(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def responder_boton(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     if query.data == 'si':
         context.bot_data['caucionado_hoy'] = True
         await query.edit_message_text("✅ **¡Excelente!** Operación registrada. Hasta mañana.")
@@ -83,23 +88,18 @@ async def responder_boton(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def main():
     threading.Thread(target=start_health_check, daemon=True).start()
-
     time.sleep(8)
-
     app = Application.builder().token(TOKEN).build()
 
-    dias_semana = (0, 1, 2, 3, 4)
-
+    # Ahora corren todos los días y adentro verificamos el día
     app.job_queue.run_daily(
         enviar_alerta_13, 
-        time=datetime.time(13, 0, tzinfo=ZONA_HORARIA), 
-        days=dias_semana
+        time=datetime.time(13, 0, tzinfo=ZONA_HORARIA)
     )
     
     app.job_queue.run_daily(
         enviar_alerta_16, 
-        time=datetime.time(16, 0, tzinfo=ZONA_HORARIA), 
-        days=dias_semana
+        time=datetime.time(16, 0, tzinfo=ZONA_HORARIA)
     )
 
     app.add_handler(CommandHandler("probar", probar_comando))
